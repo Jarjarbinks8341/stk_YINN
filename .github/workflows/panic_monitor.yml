@@ -22,23 +22,26 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt pytz requests
+        pip install -r requirements.txt
 
     - name: Check Market Status and Hour
       id: check_market
       run: |
         # Check if market is open and if this is the 10 AM ET opening report
-        # is_market_open.py now handles the check.
-        if python is_market_open.py; then
-          echo "open=true" >> $GITHUB_OUTPUT
-        else
-          echo "open=false" >> $GITHUB_OUTPUT
-        fi
+        # We'll use a python script for the full check to avoid shell exit code issues
+        RESULT=$(python -c "
+import datetime, pytz, sys
+from is_market_open import is_market_open
+tz = pytz.timezone('US/Eastern')
+now_et = datetime.datetime.now(pytz.utc).astimezone(tz)
+is_open = is_market_open()
+print(f'open={str(is_open).lower()}')
+print(f'hour_et={now_et.hour}')
+        ")
+        echo "$RESULT" >> $GITHUB_OUTPUT
         
-        # Check if it's the 10 AM ET hour (15:00 UTC during standard time)
-        # We'll use a python one-liner for robustness
+        # Check if it's the 10 AM ET hour
         HOUR_ET=$(python -c "import datetime, pytz; print(datetime.datetime.now(pytz.utc).astimezone(pytz.timezone('US/Eastern')).hour)")
-        echo "hour_et=$HOUR_ET" >> $GITHUB_OUTPUT
         if [ "$HOUR_ET" -eq 10 ]; then
           echo "is_opening_report=true" >> $GITHUB_OUTPUT
         else
@@ -68,10 +71,11 @@ jobs:
             echo "send_notif=false" >> $GITHUB_OUTPUT
         fi
         
-        # Export the report content for the next step
-        echo "report<<EOF" >> $GITHUB_OUTPUT
+        # Use a more unique delimiter for multiline strings in GITHUB_OUTPUT
+        EOF_DELIMITER=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64)
+        echo "report<<$EOF_DELIMITER" >> $GITHUB_OUTPUT
         cat output.txt >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "$EOF_DELIMITER" >> $GITHUB_OUTPUT
 
     - name: Send Notification
       if: steps.run_panic.outputs.send_notif == 'true'
