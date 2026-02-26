@@ -3,7 +3,6 @@ name: YINN Hourly Panic Monitor
 on:
   schedule:
     # Runs at the start of every hour from 14:00 to 21:00 UTC (weekdays)
-    # This covers 9:00 AM - 4:00 PM ET regardless of Standard vs Daylight Time.
     - cron: '0 14-21 * * 1-5'
   workflow_dispatch: # Allow manual triggers
 
@@ -23,16 +22,27 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        # We need pytz for time zone checking, requests for notifications
         pip install -r requirements.txt pytz requests
 
-    - name: Check if Market is Currently Active
+    - name: Check Market Status and Hour
       id: check_market
       run: |
+        # Check if market is open and if this is the 10 AM ET opening report
+        # is_market_open.py now handles the check.
         if python is_market_open.py; then
           echo "open=true" >> $GITHUB_OUTPUT
         else
           echo "open=false" >> $GITHUB_OUTPUT
+        fi
+        
+        # Check if it's the 10 AM ET hour (15:00 UTC during standard time)
+        # We'll use a python one-liner for robustness
+        HOUR_ET=$(python -c "import datetime, pytz; print(datetime.datetime.now(pytz.utc).astimezone(pytz.timezone('US/Eastern')).hour)")
+        echo "hour_et=$HOUR_ET" >> $GITHUB_OUTPUT
+        if [ "$HOUR_ET" -eq 10 ]; then
+          echo "is_opening_report=true" >> $GITHUB_OUTPUT
+        else
+          echo "is_opening_report=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Initialize Database and Update Data
@@ -44,31 +54,31 @@ jobs:
       if: steps.check_market.outputs.open == 'true'
       id: run_panic
       run: |
-        # Run the strategy and capture its output to a file
         python panic_put_seller.py > output.txt
-        # Save output to a variable and send it to next steps if panic > 0
         cat output.txt
-        # If output contains a "Panic Alert"
+        
+        # Determine if we should send a notification
+        # 1. It's a Panic Alert
+        # 2. It's the 10 AM Opening Report (even if no panic)
         if grep -q "🚨 YINN PANIC ALERT 🚨" output.txt; then
-            echo "panic_alert=true" >> $GITHUB_OUTPUT
-            # Capture the report content
-            # (In a real system, you'd use a more robust way to capture this)
-            REPORT=$(cat output.txt)
-            echo "report<<EOF" >> $GITHUB_OUTPUT
-            echo "$REPORT" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "send_notif=true" >> $GITHUB_OUTPUT
+        elif [ "${{ steps.check_market.outputs.is_opening_report }}" == "true" ]; then
+            echo "send_notif=true" >> $GITHUB_OUTPUT
         else
-            echo "panic_alert=false" >> $GITHUB_OUTPUT
+            echo "send_notif=false" >> $GITHUB_OUTPUT
         fi
+        
+        # Export the report content for the next step
+        echo "report<<EOF" >> $GITHUB_OUTPUT
+        cat output.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Send Notification
-      if: steps.run_panic.outputs.panic_alert == 'true'
+      if: steps.run_panic.outputs.send_notif == 'true'
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        # Call the notification script with the report
-        # Note: In a production setting, you'd want to handle multiline strings carefully.
         python send_notif.py "${{ steps.run_panic.outputs.report }}"
 
     - name: Skip if Market Closed

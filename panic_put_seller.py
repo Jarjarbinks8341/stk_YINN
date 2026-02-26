@@ -30,8 +30,9 @@ def calculate_technical_indicators(data):
 
 def generate_notification_report(panic_score, recommendation, details, current_price, rsi, d1_drop, support):
     """Formats the report for a notification service."""
+    header = "🚨 YINN PANIC ALERT 🚨" if panic_score > 0 else "📊 YINN DAILY STATUS 📊"
     report = [
-        "🚨 YINN PANIC ALERT 🚨",
+        header,
         f"Time: {datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M ET')}",
         f"Price: ${current_price:.2f} ({d1_drop:+.1f}%)",
         f"RSI: {rsi:.1f}",
@@ -41,8 +42,11 @@ def generate_notification_report(panic_score, recommendation, details, current_p
         f"ADVICE: {details}",
         f"Target Support: ${support:.2f}",
         "-" * 20,
-        "Check your account to execute."
     ]
+    if panic_score > 0:
+        report.append("Check your account to execute.")
+    else:
+        report.append("No immediate action required.")
     return "\n".join(report)
 
 def analyze_panic_levels(capital=15000, send_notif=False):
@@ -88,10 +92,8 @@ def analyze_panic_levels(capital=15000, send_notif=False):
     report = generate_notification_report(panic_score, recommendation, details, current_price, rsi, d1_drop, support)
     print(report)
     
-    # Trigger Notification if panic_score > 0
-    if send_notif and panic_score > 0:
-        # Here you would add code to send an actual email/telegram message
-        print("\n[NOTIFICATION SENT]")
+    # Trigger Notification logic in GitHub Actions
+    # This print will be caught by the grep in panic_monitor.yml
 
 if __name__ == "__main__":
     analyze_panic_levels(15000, send_notif=True)
