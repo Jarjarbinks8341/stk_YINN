@@ -28,9 +28,7 @@ def send_to_telegram(message):
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         message = sys.argv[1]
-        # send_to_telegram(message)
-        # Add your preferred notification service here!
-        print(f"SIMULATED NOTIFICATION:
-{message}")
+        send_to_telegram(message)
+        print(f"LIVE NOTIFICATION SENT:\n{message}")
     else:
         print("No message provided.")
