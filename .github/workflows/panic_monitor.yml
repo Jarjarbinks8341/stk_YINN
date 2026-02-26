@@ -27,26 +27,19 @@ jobs:
     - name: Check Market Status and Hour
       id: check_market
       run: |
-        # Check if market is open and if this is the 10 AM ET opening report
-        # We'll use a python script for the full check to avoid shell exit code issues
-        RESULT=$(python -c "
-import datetime, pytz, sys
+        # Use Python to set clean output variables
+        python -c "
+import datetime, pytz, os
 from is_market_open import is_market_open
 tz = pytz.timezone('US/Eastern')
 now_et = datetime.datetime.now(pytz.utc).astimezone(tz)
 is_open = is_market_open()
-print(f'open={str(is_open).lower()}')
-print(f'hour_et={now_et.hour}')
-        ")
-        echo "$RESULT" >> $GITHUB_OUTPUT
-        
-        # Check if it's the 10 AM ET hour
-        HOUR_ET=$(python -c "import datetime, pytz; print(datetime.datetime.now(pytz.utc).astimezone(pytz.timezone('US/Eastern')).hour)")
-        if [ "$HOUR_ET" -eq 10 ]; then
-          echo "is_opening_report=true" >> $GITHUB_OUTPUT
-        else
-          echo "is_opening_report=false" >> $GITHUB_OUTPUT
-        fi
+
+with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+    f.write(f'open={str(is_open).lower()}\n')
+    f.write(f'hour_et={now_et.hour}\n')
+    f.write(f'is_opening_report={str(now_et.hour == 10).lower()}\n')
+        "
 
     - name: Initialize Database and Update Data
       if: steps.check_market.outputs.open == 'true'
@@ -61,8 +54,6 @@ print(f'hour_et={now_et.hour}')
         cat output.txt
         
         # Determine if we should send a notification
-        # 1. It's a Panic Alert
-        # 2. It's the 10 AM Opening Report (even if no panic)
         if grep -q "🚨 YINN PANIC ALERT 🚨" output.txt; then
             echo "send_notif=true" >> $GITHUB_OUTPUT
         elif [ "${{ steps.check_market.outputs.is_opening_report }}" == "true" ]; then
@@ -71,7 +62,7 @@ print(f'hour_et={now_et.hour}')
             echo "send_notif=false" >> $GITHUB_OUTPUT
         fi
         
-        # Use a more unique delimiter for multiline strings in GITHUB_OUTPUT
+        # Capture report content safely
         EOF_DELIMITER=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64)
         echo "report<<$EOF_DELIMITER" >> $GITHUB_OUTPUT
         cat output.txt >> $GITHUB_OUTPUT

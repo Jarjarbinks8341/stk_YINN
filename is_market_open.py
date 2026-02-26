@@ -22,7 +22,7 @@ class NYSEHolidayCalendar(AbstractHolidayCalendar):
         Holiday('Christmas', month=12, day=25, observance=nearest_workday)
     ]
 
-def is_market_open():
+def is_market_open(verbose=False):
     # Convert UTC to US Eastern Time
     eastern = pytz.timezone('US/Eastern')
     now_et = datetime.now(pytz.utc).astimezone(eastern)
@@ -31,14 +31,14 @@ def is_market_open():
     
     # 1. Check if weekend
     if today_et.weekday() >= 5:
-        print(f"DEBUG: Weekend ({today_et.strftime('%A')})")
+        if verbose: print(f"DEBUG: Weekend ({today_et.strftime('%A')})")
         return False
         
     # 2. Check if NYSE Holiday
     cal = NYSEHolidayCalendar()
     holidays = cal.holidays(start=f"{today_et.year}-01-01", end=f"{today_et.year}-12-31")
     if today_et in holidays.date:
-        print(f"DEBUG: NYSE Holiday ({today_et})")
+        if verbose: print(f"DEBUG: NYSE Holiday ({today_et})")
         return False
         
     # 3. Check if Market Hours (9:30 AM - 4:00 PM ET)
@@ -46,13 +46,13 @@ def is_market_open():
     market_close = time(16, 0)
     
     if not (market_open <= time_et <= market_close):
-        print(f"DEBUG: Outside Market Hours ({time_et.strftime('%H:%M')} ET)")
+        if verbose: print(f"DEBUG: Outside Market Hours ({time_et.strftime('%H:%M')} ET)")
         return False
         
     return True
 
 if __name__ == "__main__":
-    if is_market_open():
+    if is_market_open(verbose=True):
         print("Market is currently open and trading.")
         sys.exit(0)
     else:
